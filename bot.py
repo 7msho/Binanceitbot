@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 model = genai.GenerativeModel(
-    model_name="gemini-2.0-flash-exp",
+    model_name="gemini-1.5-pro",
     system_instruction="""You are OpenClaw 🦀, an elite AI assistant for the Binance ecosystem.
 Help ALL users — beginners to experts — with crypto and Binance questions.
 Topics you cover:
