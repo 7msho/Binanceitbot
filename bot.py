@@ -40,13 +40,63 @@ def build_contents(user_id: int, user_text: str):
     conversation = "\n".join(history)
     return f"{SYSTEM_PROMPT}\n\nConversation:\n{conversation}\n\nAssistant:"
 
-async def ask_gemini(user_id: int, text: str) -> str:
-    prompt = build_contents(user_id, text)
+async def ask_gemini(user_id, text):
+    if user_id not in user_histories:
+        user_histories[user_id] = []
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
+    user_histories[user_id].append({
+        "role": "user",
+        "parts": [{"text": text}]
+    })
+
+    if len(user_histories[user_id]) > 10:
+        user_histories[user_id] = user_histories[user_id][-10:]
+
+    payload = {
+        "system_instruction": {
+            "parts": [{"text": SYSTEM_PROMPT}]
+        },
+        "contents": user_histories[user_id]
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(GEMINI_URL, json=payload)
+            data = response.json()
+
+        if response.status_code != 200:
+            error_msg = data.get("error", {}).get("message", "Unknown error")
+
+            if response.status_code == 429:
+                return (
+                    "⚠️ AI service is busy right now because the free quota is finished.\n\n"
+                    "Try one of these commands instead:\n"
+                    "/price BTC\n"
+                    "/price BNB\n"
+                    "/convert 100 USDT BNB\n"
+                    "/top"
+                )
+
+            return f"⚠️ Gemini API error: {response.status_code}\n{error_msg}"
+
+        reply = data["candidates"][0]["content"]["parts"][0]["text"]
+
+        user_histories[user_id].append({
+            "role": "model",
+            "parts": [{"text": reply}]
+        })
+
+        return reply
+
+    except Exception as e:
+        logger.error(f"Gemini error: {e}")
+        return (
+            "⚠️ AI is temporarily unavailable.\n\n"
+            "You can still use:\n"
+            "/price BTC\n"
+            "/convert 100 USDT BNB\n"
+            "/top"
+        )
 
     reply = response.text if response.text else "⚠️ مفيش رد من Gemini."
     user_histories[user_id].append(f"Assistant: {reply}")
