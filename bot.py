@@ -1,6 +1,6 @@
 import os
 import logging
-import httpx
+import google.generativeai as genai
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -10,120 +10,134 @@ from telegram.ext import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+model = genai.GenerativeModel(
+    model_name="gemini-2.0-flash-exp",
+    system_instruction="""You are OpenClaw 🦀, an elite AI assistant for the Binance ecosystem.
+Help ALL users — beginners to experts — with crypto and Binance questions.
+Topics you cover:
+- Crypto basics (BTC, ETH, BNB, DeFi, NFT, staking, mining)
+- Binance features (spot trading, futures, earn, P2P, launchpad)
+- Order types (market, limit, stop-loss, OCO)
+- Security (2FA, anti-phishing, withdrawal whitelist)
+- Fees, spreads, funding rates
+- Binance Web3 Wallet
+- Trading psychology and risk management
+Rules:
+- Never give financial advice or tell users what to buy/sell
+- Always remind users to DYOR when relevant
+- Be friendly, clear, and use emojis
+- Respond in the SAME language as the user (Arabic or English)
+- Format nicely for Telegram"""
+)
 
-SYSTEM_PROMPT = """You are OpenClaw, an AI assistant for Binance and crypto.
-Help users with crypto and Binance questions.
-Never give financial advice. Always say DYOR.
-Respond in same language as user (Arabic or English)."""
-
-user_histories = {}
-
-async def ask_gemini(user_id, text):
-    if user_id not in user_histories:
-        user_histories[user_id] = []
-    
-    user_histories[user_id].append({"role": "user", "parts": [{"text": text}]})
-    
-    if len(user_histories[user_id]) > 10:
-        user_histories[user_id] = user_histories[user_id][-10:]
-    
-    payload = {
-        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-        "contents": user_histories[user_id]
-    }
-    
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(GEMINI_URL, json=payload)
-        data = response.json()
-    
-    reply = data["candidates"][0]["content"]["parts"][0]["text"]
-    user_histories[user_id].append({"role": "model", "parts": [{"text": reply}]})
-    return reply
+user_chats = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name
     await update.message.reply_text(
         f"👋 أهلاً {name}!\n\n"
-        "🦀 أنا OpenClaw — مساعدك لكل حاجة Binance وCrypto!\n\n"
-        "اسألني أي حاجة أو اكتب /help 🚀\n\n"
-        "⚠️ للأغراض التعليمية فقط"
+        "🦀 أنا *OpenClaw* — مساعدك الذكي لكل حاجة Binance وCrypto!\n\n"
+        "اسألني عن:\n"
+        "🪙 شرح العملات والمفاهيم\n"
+        "📊 كيفية التداول على Binance\n"
+        "🔐 أمان حسابك\n"
+        "💰 Binance Earn والـ Staking\n"
+        "⚡ الـ Futures والـ Leverage\n\n"
+        "اكتب /help لقائمة الأوامر\n\n"
+        "⚠️ _للأغراض التعليمية فقط - مش نصيحة مالية_",
+        parse_mode="Markdown"
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🦀 الأوامر المتاحة:\n\n"
+        "🦀 *OpenClaw - الأوامر المتاحة*\n\n"
         "/start - رسالة الترحيب\n"
         "/help - قائمة الأوامر\n"
         "/about - معلومات عن البوت\n"
-        "/clear - مسح المحادثة\n"
-        "/binance - مميزات Binance\n"
-        "/crypto - مصطلحات Crypto\n"
-        "/security - نصائح الأمان\n\n"
-        "💬 أو اكتب سؤالك مباشرة!"
+        "/clear - مسح تاريخ المحادثة\n"
+        "/binance - مميزات Binance الرئيسية\n"
+        "/crypto - مصطلحات Crypto الأساسية\n"
+        "/security - نصائح أمان الحساب\n\n"
+        "💬 أو اكتب سؤالك مباشرة!",
+        parse_mode="Markdown"
     )
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🦀 OpenClaw AI Assistant\n\n"
-        "Built for Binance OpenClaw AI Challenge 2026 🏆\n\n"
-        "🤖 مدعوم بـ Google Gemini AI\n"
-        "🌍 يرد بالعربي والإنجليزي\n\n"
-        "⚠️ للأغراض التعليمية فقط"
+        "🦀 *OpenClaw AI Assistant*\n\n"
+        "Built for the *Binance OpenClaw AI Challenge 2026* 🏆\n\n"
+        "🎯 الهدف: تسهيل تجربة Binance للجميع\n"
+        "🤖 مدعوم بـ: Google Gemini AI\n"
+        "⚡ السرعة: ردود فورية\n"
+        "🌍 اللغات: العربية والإنجليزية\n\n"
+        "⚠️ _للأغراض التعليمية فقط - ليس نصيحة مالية_",
+        parse_mode="Markdown"
     )
 
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    user_histories[user_id] = []
-    await update.message.reply_text("✅ تم مسح المحادثة!")
+    if user_id in user_chats:
+        del user_chats[user_id]
+    await update.message.reply_text("✅ تم مسح تاريخ المحادثة! ابدأ سؤال جديد 🦀")
 
 async def binance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🏦 مميزات Binance:\n\n"
-        "📈 Spot Trading\n"
-        "⚡ Futures\n"
-        "💰 Binance Earn\n"
-        "🔄 P2P\n"
-        "🚀 Launchpad\n"
-        "🌐 Web3 Wallet\n\n"
-        "اسألني عن أي ميزة! 🦀"
+        "🏦 *مميزات Binance الرئيسية*\n\n"
+        "📈 *Spot Trading* - تداول العملات مباشرة\n"
+        "⚡ *Futures* - تداول بالرافعة المالية\n"
+        "💰 *Binance Earn* - استثمار وفوائد يومية\n"
+        "🔄 *P2P* - بيع وشراء بالعملات المحلية\n"
+        "🚀 *Launchpad* - الاشتراك في عملات جديدة\n"
+        "🌐 *Web3 Wallet* - محفظة لامركزية\n"
+        "💳 *Binance Card* - بطاقة دفع بالكريبتو\n\n"
+        "اسألني عن أي ميزة للمزيد من التفاصيل! 🦀",
+        parse_mode="Markdown"
     )
 
 async def crypto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📚 مصطلحات أساسية:\n\n"
-        "🪙 BTC - Bitcoin\n"
-        "💎 ETH - Ethereum\n"
-        "🟡 BNB - Binance Coin\n"
-        "💵 USDT - Tether\n"
-        "🏦 DeFi - تمويل لامركزي\n"
-        "🐂 Bull Market - سوق صاعد\n"
-        "🐻 Bear Market - سوق هابط\n\n"
-        "اسألني عن أي مصطلح! 🦀"
+        "📚 *مصطلحات Crypto الأساسية*\n\n"
+        "🪙 *BTC* - Bitcoin، أول عملة رقمية\n"
+        "💎 *ETH* - Ethereum، منصة العقود الذكية\n"
+        "🟡 *BNB* - عملة Binance الأصلية\n"
+        "💵 *USDT* - عملة مستقرة مربوطة بالدولار\n"
+        "🏦 *DeFi* - التمويل اللامركزي\n"
+        "🖼️ *NFT* - رمز غير قابل للاستبدال\n"
+        "📊 *ATH* - أعلى سعر في التاريخ\n"
+        "🐂 *Bull Market* - سوق صاعد\n"
+        "🐻 *Bear Market* - سوق هابط\n\n"
+        "اسألني عن أي مصطلح للمزيد! 🦀",
+        parse_mode="Markdown"
     )
 
 async def security_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🔐 نصائح الأمان:\n\n"
-        "✅ فعّل 2FA\n"
-        "✅ استخدم Anti-Phishing Code\n"
-        "✅ فعّل Withdrawal Whitelist\n"
-        "✅ كلمة مرور قوية\n"
-        "❌ لا تشارك API Keys\n"
-        "❌ لا تصدق Giveaways\n\n"
-        "🦀 أمانك أهم من أي ربح!"
+        "🔐 *نصائح أمان حساب Binance*\n\n"
+        "✅ فعّل *2FA* (Google Authenticator)\n"
+        "✅ استخدم *Anti-Phishing Code*\n"
+        "✅ فعّل *Withdrawal Whitelist*\n"
+        "✅ استخدم كلمة مرور قوية وفريدة\n"
+        "✅ لا تشارك الـ API Keys مع أحد\n"
+        "✅ تحقق دايماً من الـ URL\n"
+        "❌ لا تدخل بياناتك في مواقع مجهولة\n"
+        "❌ لا تصدق عروض الـ giveaway\n\n"
+        "🦀 _أمانك أهم من أي ربح!_",
+        parse_mode="Markdown"
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_text = update.message.text
 
+    if user_id not in user_chats:
+        user_chats[user_id] = model.start_chat(history=[])
+
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
     try:
-        reply = await ask_gemini(user_id, user_text)
-        await update.message.reply_text(reply)
+        response = user_chats[user_id].send_message(user_text)
+        await update.message.reply_text(response.text)
     except Exception as e:
         logger.error(f"Error: {e}")
         await update.message.reply_text("⚠️ حدث خطأ، حاول تاني!")
