@@ -1,6 +1,6 @@
 import os
 import logging
-import httpx
+from google import genai
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -10,66 +10,58 @@ from telegram.ext import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 SYSTEM_PROMPT = """You are OpenClaw 🦀, an elite AI assistant for Binance and crypto.
 Help users with Binance features, crypto education, security basics, and product discovery.
 Do not provide personalized financial advice or guaranteed profit claims.
 Always encourage users to do their own research.
 Respond in the same language as the user (Arabic or English).
-Be friendly and helpful and concise.
+Be friendly, helpful, and concise.
 """
 
 user_histories = {}
 
+client = genai.Client(api_key=GEMINI_API_KEY)
+
 async def ask_gemini(user_id: int, text: str) -> str:
     if not GEMINI_API_KEY:
-        return "⚠️ GEMINI_API_KEY مش مضاف في Variables."
+        return "⚠️ GEMINI_API_KEY missing"
 
     if user_id not in user_histories:
         user_histories[user_id] = []
 
-    user_histories[user_id].append({
-        "role": "user",
-        "parts": [{"text": text}]
-    })
+    user_histories[user_id].append(f"User: {text}")
 
     if len(user_histories[user_id]) > 10:
         user_histories[user_id] = user_histories[user_id][-10:]
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    history_text = "\n".join(user_histories[user_id])
 
-    payload = {
-        "system_instruction": {
-            "parts": [{"text": SYSTEM_PROMPT}]
-        },
-        "contents": user_histories[user_id]
-    }
+    full_prompt = f"""{SYSTEM_PROMPT}
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(url, json=payload)
+Conversation history:
+{history_text}
 
-    logger.info(f"Gemini status: {response.status_code}")
-    logger.info(f"Gemini raw response: {response.text}")
-
-    if response.status_code != 200:
-        return f"⚠️ Gemini API error: {response.status_code}"
-
-    data = response.json()
+Current user message:
+{text}
+"""
 
     try:
-        reply = data["candidates"][0]["content"]["parts"][0]["text"]
+        response = client.models.generate_content(
+            model="gemini-3-flash-preview",
+            contents=full_prompt
+        )
+
+        reply = response.text if response.text else "⚠️ مفيش رد واضح من Gemini."
+
+        user_histories[user_id].append(f"Assistant: {reply}")
+        return reply
+
     except Exception as e:
-        logger.error(f"Gemini parse error: {e}")
-        return "⚠️ Gemini رجّع response غير متوقع. شوف الـ logs."
-
-    user_histories[user_id].append({
-        "role": "model",
-        "parts": [{"text": reply}]
-    })
-
-    return reply
+        logger.exception("Gemini SDK error")
+        return f"⚠️ Gemini error: {e}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name
@@ -97,7 +89,7 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🦀 OpenClaw AI Assistant\n\n"
         "Built for Binance OpenClaw AI Challenge 2026 🏆\n\n"
-        "🤖 Powered by Gemini AI\n"
+        "🤖 Powered by Google GenAI SDK\n"
         "🌍 عربي وإنجليزي\n\n"
         "⚠️ للأغراض التعليمية فقط"
     )
@@ -138,7 +130,7 @@ async def security_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅ استخدم Withdrawal Whitelist\n"
         "✅ استخدم كلمة مرور قوية\n"
         "❌ لا تشارك API Keys\n"
-        "❌ لا تصدق giveways أو الرسائل المزيفة"
+        "❌ لا تصدق الرسائل أو الروابط المزيفة"
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -150,16 +142,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         action="typing"
     )
 
-    try:
-        reply = await ask_gemini(user_id, user_text)
-        await update.message.reply_text(reply)
-    except Exception as e:
-        logger.exception("handle_message failed")
-        await update.message.reply_text(f"⚠️ حصل خطأ: {e}")
+    reply = await ask_gemini(user_id, user_text)
+    await update.message.reply_text(reply)
 
 def main():
     if not TELEGRAM_BOT_TOKEN:
         raise ValueError("TELEGRAM_BOT_TOKEN missing")
+
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY missing")
 
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
