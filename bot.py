@@ -286,12 +286,44 @@ async def learn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 async def fear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # نسخة بسيطة من غير API خارجي معقد
-    await update.message.reply_text(
-        "😶‍🌫️ Fear & Greed command\n\n"
-        "حالياً النسخة دي placeholder.\n"
-        "ممكن بعد كده نربطها بمصدر مباشر للمؤشر ونخليها live."
-    )
+    await context.bot.send_chat_action(update.effective_chat.id, ChatAction.TYPING)
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get("https://api.alternative.me/fng/")
+            data = r.json()
+        
+        value = int(data["data"][0]["value"])
+        label = data["data"][0]["value_classification"]
+        updated = data["data"][0]["time_until_update"]
+        
+        if value <= 25:
+            emoji = "😱"
+        elif value <= 45:
+            emoji = "😰"
+        elif value <= 55:
+            emoji = "😐"
+        elif value <= 75:
+            emoji = "😊"
+        else:
+            emoji = "🤑"
+        
+        bar_filled = int(value / 10)
+        bar = "🟡" * bar_filled + "⬛" * (10 - bar_filled)
+        
+        msg = (
+            f"😶‍🌫️ Fear & Greed Index\n\n"
+            f"{emoji} {label}\n"
+            f"القيمة: {value}/100\n\n"
+            f"{bar}\n\n"
+            f"0 = Extreme Fear 😱\n"
+            f"100 = Extreme Greed 🤑\n\n"
+            f"⏱ يتحدث كل 24 ساعة"
+        )
+        await update.message.reply_text(msg)
+    except Exception as e:
+        logger.error(f"Fear & Greed error: {e}")
+        await update.message.reply_text("⚠️ ماقدرتش أجيب البيانات، حاول تاني!")
+
 
 async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
