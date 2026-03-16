@@ -422,7 +422,177 @@ async def opportunity_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"دي مجرد لمحة سريعة وليست إشارة دخول. DYOR."
     )
     await update.message.reply_text(msg)
+# =========================
+# NEW FEATURES
+# =========================
 
+price_alerts = {}
+portfolios = {}
+
+# PRICE ALERT
+async def alert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if len(context.args) != 2:
+        await update.message.reply_text("Usage:\n/alert BTC 70000")
+        return
+
+    coin = context.args[0].upper()
+    target = float(context.args[1])
+
+    user = update.effective_user.id
+
+    if user not in price_alerts:
+        price_alerts[user] = []
+
+    price_alerts[user].append((coin, target))
+
+    await update.message.reply_text(
+        f"✅ Alert set\n\n{coin} → {target} USDT"
+    )
+
+
+# MARKET MOVERS
+async def movers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    url = "https://api.binance.com/api/v3/ticker/24hr"
+
+    async with httpx.AsyncClient() as client:
+        r = await client.get(url)
+
+    data = r.json()
+
+    pairs = []
+
+    for i in data:
+        if i["symbol"].endswith("USDT"):
+            pairs.append(
+                (i["symbol"], float(i["priceChangePercent"]))
+            )
+
+    gainers = sorted(pairs, key=lambda x: x[1], reverse=True)[:5]
+    losers = sorted(pairs, key=lambda x: x[1])[:5]
+
+    msg = "🚀 Top Gainers\n\n"
+
+    for g in gainers:
+        msg += f"{g[0]} {g[1]:.2f}%\n"
+
+    msg += "\n🔻 Top Losers\n\n"
+
+    for l in losers:
+        msg += f"{l[0]} {l[1]:.2f}%\n"
+
+    await update.message.reply_text(msg)
+
+
+# PORTFOLIO
+async def add_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if len(context.args) != 2:
+        await update.message.reply_text("Usage:\n/add BTC 0.5")
+        return
+
+    coin = context.args[0].upper()
+    amount = float(context.args[1])
+
+    user = update.effective_user.id
+
+    if user not in portfolios:
+        portfolios[user] = {}
+
+    portfolios[user][coin] = portfolios[user].get(coin, 0) + amount
+
+    await update.message.reply_text("✅ Added to portfolio")
+
+
+async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user = update.effective_user.id
+
+    if user not in portfolios:
+        await update.message.reply_text("Portfolio empty")
+        return
+
+    msg = "💼 Your Portfolio\n\n"
+
+    total = 0
+
+    for coin, amount in portfolios[user].items():
+
+        symbol = coin + "USDT"
+
+        price, _ = await get_binance_price(symbol)
+
+        value = float(price) * amount
+
+        total += value
+
+        msg += f"{coin} {amount} ≈ ${value:.2f}\n"
+
+    msg += f"\nTotal ≈ ${total:.2f}"
+
+    await update.message.reply_text(msg)
+
+
+# CONTRACT SCAN
+async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if not context.args:
+        await update.message.reply_text("Usage:\n/scan CONTRACT")
+        return
+
+    contract = context.args[0]
+
+    msg = (
+        "🔎 Contract Analysis\n\n"
+        f"Contract:\n{contract}\n\n"
+        "Check liquidity, holders and verification on explorer."
+    )
+
+    await update.message.reply_text(msg)
+
+
+# POTENTIAL BINANCE LISTINGS
+async def listings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    url = "https://api.coingecko.com/api/v3/search/trending"
+
+    async with httpx.AsyncClient() as client:
+        r = await client.get(url)
+
+    data = r.json()
+
+    msg = "🔥 Trending Coins (Possible Future Listings)\n\n"
+
+    for c in data["coins"]:
+
+        coin = c["item"]
+
+        msg += f"{coin['name']} ({coin['symbol']})\n"
+
+    msg += "\nThese coins are trending in the market."
+
+    await update.message.reply_text(msg)
+
+
+# MARKET SUMMARY
+async def market_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    url = "https://api.coingecko.com/api/v3/global"
+
+    async with httpx.AsyncClient() as client:
+        r = await client.get(url)
+
+    data = r.json()["data"]
+
+    msg = (
+        "📊 Crypto Market\n\n"
+        f"Total Market Cap: ${data['total_market_cap']['usd']:,}\n"
+        f"24h Volume: ${data['total_volume']['usd']:,}\n"
+        f"BTC Dominance: {data['market_cap_percentage']['btc']:.2f}%"
+    )
+
+    await update.message.reply_text(msg)
 # =========================
 # AI chat
 # =========================
@@ -483,7 +653,13 @@ def main():
     app.add_handler(CommandHandler("convert", convert_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("opportunity", opportunity_command))
-
+    app.add_handler(CommandHandler("alert", alert_command))
+app.add_handler(CommandHandler("movers", movers_command))
+app.add_handler(CommandHandler("add", add_portfolio))
+app.add_handler(CommandHandler("portfolio", portfolio_command))
+app.add_handler(CommandHandler("scan", scan_command))
+app.add_handler(CommandHandler("listings", listings_command))
+app.add_handler(CommandHandler("market", market_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("🦀 OpenClaw in v2 is running...")
