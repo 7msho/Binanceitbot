@@ -422,7 +422,45 @@ async def opportunity_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"دي مجرد لمحة سريعة وليست إشارة دخول. DYOR."
     )
     await update.message.reply_text(msg)
+# =========================
+# /contracts command
+# =========================
 
+async def contracts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("استخدمها كده:\n/contracts BTCUSDT\nأو أي رمز زوج Futures")
+        return
+
+    symbol = context.args[0].upper().replace("/", "").strip()
+
+    url = f"https://fapi.binance.com/fapi/v1/exchangeInfo"
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(url)
+
+    if r.status_code != 200:
+        await update.message.reply_text(f"⚠️ Binance API error: {r.status_code}")
+        return
+
+    data = r.json()
+    contracts = [s for s in data.get("symbols", []) if s["symbol"] == symbol]
+
+    if not contracts:
+        await update.message.reply_text(f"⚠️ لم أجد أي عقد باسم {symbol}")
+        return
+
+    contract = contracts[0]
+    info_lines = [
+        f"📄 Contract info: {symbol}\n",
+        f"Status: {contract.get('status')}",
+        f"Base Asset: {contract.get('baseAsset')}",
+        f"Quote Asset: {contract.get('quoteAsset')}",
+        f"Contract Type: {contract.get('contractType')}",
+        f"Delivery Date: {contract.get('deliveryDate', 'N/A')}",
+        f"Price Precision: {contract.get('pricePrecision')}",
+        f"Quantity Precision: {contract.get('quantityPrecision')}",
+    ]
+
+    await update.message.reply_text("\n".join(info_lines))
 # =========================
 # AI chat
 # =========================
@@ -483,7 +521,7 @@ def main():
     app.add_handler(CommandHandler("convert", convert_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("opportunity", opportunity_command))
-
+    app.add_handler(CommandHandler("contracts", contracts_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("🦀 OpenClaw v2 is running...")
