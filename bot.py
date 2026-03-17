@@ -632,7 +632,92 @@ async def market_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"BTC Dominance: {data['market_cap_percentage']['btc']:.2f}%"
     )
 
+ 
     await update.message.reply_text(msg)
+
+# ========================= 
+# NEW COMMANDS — أضيفهم للبوت
+# =========================
+
+# 1) /newtokens — أكبر عملات في السوق بالـ Market Cap
+async def newtokens_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = "https://api.coingecko.com/api/v3/coins/markets"
+    params = {
+        "vs_currency": "usd",
+        "order": "market_cap_desc",
+        "per_page": 10,
+        "page": 1,
+        "sparkline": False
+    }
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.get(url, params=params)
+
+    if r.status_code != 200:
+        await update.message.reply_text(f"⚠️ CoinGecko API error: {r.status_code}")
+        return
+
+    data = r.json()
+
+    msg = "🆕 Market tokens\n\n"
+    for coin in data:
+        name = coin.get("symbol", "").upper()
+        price = coin.get("current_price", 0)
+        mc = coin.get("market_cap", 0)
+        msg += f"{name} | ${price:,} | MC ${mc:,}\n"
+
+    await update.message.reply_text(msg)
+
+
+# 2) /fear — Fear & Greed Index
+async def fear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = "https://api.alternative.me/fng/"
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(url)
+
+    if r.status_code != 200:
+        await update.message.reply_text(f"⚠️ API error: {r.status_code}")
+        return
+
+    data = r.json()
+    value = data["data"][0]["value"]
+    status = data["data"][0]["value_classification"]
+
+    msg = (
+        "😱 Fear & Greed Index\n\n"
+        f"Value: {value}\n"
+        f"Status: {status}"
+    )
+    await update.message.reply_text(msg)
+
+
+# 3) /global — ملخص السوق العالمي (Global Market)
+async def global_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = "https://api.coingecko.com/api/v3/global"
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(url)
+
+    if r.status_code != 200:
+        await update.message.reply_text(f"⚠️ API error: {r.status_code}")
+        return
+
+    data = r.json()["data"]
+
+    total_mc = data["total_market_cap"]["usd"]
+    total_vol = data["total_volume"]["usd"]
+    btc_dom = data["market_cap_percentage"]["btc"]
+    eth_dom = data["market_cap_percentage"]["eth"]
+    coins_count = data["active_cryptocurrencies"]
+
+    msg = (
+        "🌍 Crypto Market\n\n"
+        f"Total Market Cap: ${total_mc:,.0f}\n"
+        f"24h Volume: ${total_vol:,.0f}\n"
+        f"BTC Dominance: {btc_dom:.2f}%\n"
+        f"ETH Dominance: {eth_dom:.2f}%\n"
+        f"Active Coins: {coins_count:,}"
+    )
+    await update.message.reply_text(msg)
+
 # =========================
 # AI chat
 # =========================
@@ -702,6 +787,9 @@ def main():
     app.add_handler(CommandHandler("scan", scan_command))
     app.add_handler(CommandHandler("listings", listings_command))
     app.add_handler(CommandHandler("market", market_command))
+    app.add_handler(CommandHandler("newtokens", newtokens_command))
+    app.add_handler(CommandHandler("fear", fear_command))
+    app.add_handler(CommandHandler("global", global_command))
     logger.info("🦀 OpenClaw v2 is running...")
     app.run_polling(drop_pending_updates=True)
 
